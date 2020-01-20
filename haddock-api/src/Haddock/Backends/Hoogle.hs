@@ -86,8 +86,7 @@ dropHsDocTy = f
         f (HsDocTy _ a _) = f $ unL a
         f x = x
 
-outHsType :: (OutputableBndrId p)
-          => DynFlags -> HsType (GhcPass p) -> String
+outHsType :: DynFlags -> HsType GhcRn -> String
 outHsType dflags = out dflags . reparenType . dropHsDocTy
 
 
@@ -152,7 +151,7 @@ ppSigWithDoc dflags sig subdocs = case sig of
 ppSig :: DynFlags -> Sig GhcRn -> [String]
 ppSig dflags x  = ppSigWithDoc dflags x []
 
-pp_sig :: DynFlags -> [Located Name] -> LHsType GhcRn -> String
+pp_sig :: DynFlags -> [LocatedA Name] -> LHsType GhcRn -> String
 pp_sig dflags names (L _ typ)  =
     operator prettyNames ++ " :: " ++ outHsType dflags typ
     where
@@ -228,7 +227,7 @@ ppData dflags decl@(DataDecl { tcdDataDefn = defn }) subdocs
 ppData _ _ _ = panic "ppData"
 
 -- | for constructors, and named-fields...
-lookupCon :: DynFlags -> [(Name, DocForDecl Name)] -> Located Name -> [String]
+lookupCon :: DynFlags -> [(Name, DocForDecl Name)] -> LocatedA Name -> [String]
 lookupCon dflags subdocs (L _ name) = case lookup name subdocs of
   Just (d, _) -> ppDocumentation dflags d
   _ -> []
@@ -241,11 +240,11 @@ ppCtor dflags dat subdocs con@ConDeclH98 {}
         f (PrefixCon args) = [typeSig name $ args ++ [resType]]
         f (InfixCon a1 a2) = f $ PrefixCon [a1,a2]
         f (RecCon (L _ recs)) = f (PrefixCon $ map cd_fld_type (map unLoc recs)) ++ concat
-                          [(concatMap (lookupCon dflags subdocs . noLoc . extFieldOcc . unLoc) (cd_fld_names r)) ++
+                          [(concatMap (lookupCon dflags subdocs . noLocA . extFieldOcc . unLoc) (cd_fld_names r)) ++
                            [out dflags (map (extFieldOcc . unLoc) $ cd_fld_names r) `typeSig` [resType, cd_fld_type r]]
                           | r <- map unLoc recs]
 
-        funs = foldr1 (\x y -> reL $ HsFunTy noExtField x y)
+        funs = foldr1 (\x y -> reL $ HsFunTy noAnn x y)
         apps = foldl1 (\x y -> reL $ HsAppTy noExtField x y)
 
         typeSig nm flds = operator nm ++ " :: " ++ outHsType dflags (unL $ funs flds)
@@ -254,12 +253,12 @@ ppCtor dflags dat subdocs con@ConDeclH98 {}
         -- docs for con_names on why it is a list to begin with.
         name = commaSeparate dflags . map unL $ getConNames con
 
-        tyVarArg (UserTyVar _ n) = HsTyVar noExtField NotPromoted n
-        tyVarArg (KindedTyVar _ n lty) = HsKindSig noExtField (reL (HsTyVar noExtField NotPromoted n)) lty
+        tyVarArg (UserTyVar _ n) = HsTyVar noAnn NotPromoted n
+        tyVarArg (KindedTyVar _ n lty) = HsKindSig noAnn (reL (HsTyVar noAnn NotPromoted n)) lty
         tyVarArg _ = panic "ppCtor"
 
         resType = apps $ map reL $
-                        (HsTyVar noExtField NotPromoted (reL (tcdName dat))) :
+                        (HsTyVar noAnn NotPromoted (reL (tcdName dat))) :
                         map (tyVarArg . unLoc) (hsQTvExplicit $ tyClDeclTyVars dat)
 
 ppCtor dflags _dat subdocs con@(ConDeclGADT { })
@@ -272,7 +271,7 @@ ppCtor dflags _dat subdocs con@(ConDeclGADT { })
 ppCtor _ _ _ (XConDecl nec) = noExtCon nec
 
 ppFixity :: DynFlags -> (Name, Fixity) -> [String]
-ppFixity dflags (name, fixity) = [out dflags ((FixitySig noExtField [noLoc name] fixity) :: FixitySig GhcRn)]
+ppFixity dflags (name, fixity) = [out dflags ((FixitySig noExtField [noLocA name] fixity) :: FixitySig GhcRn)]
 
 
 ---------------------------------------------------------------------
@@ -295,7 +294,7 @@ docWith dflags header d
     lines header ++ ["" | header /= "" && isJust d] ++
     maybe [] (showTags . markup (markupTag dflags)) d
 
-mkSubdoc :: DynFlags -> Located Name -> [(Name, DocForDecl Name)] -> [String] -> [String]
+mkSubdoc :: DynFlags -> LocatedA Name -> [(Name, DocForDecl Name)] -> [String] -> [String]
 mkSubdoc dflags n subdocs s = concatMap (ppDocumentation dflags) getDoc ++ s
  where
    getDoc = maybe [] (return . fst) (lookup (unL n) subdocs)
